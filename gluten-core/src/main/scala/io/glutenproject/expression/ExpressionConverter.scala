@@ -367,12 +367,20 @@ object ExpressionConverter extends SQLConfHelper with Logging {
           c.children.map(child => replaceWithExpressionTransformer(child, attributeSeq))
         new CreateMapTransformer(substraitExprName.get, children, c.useStringTypeWhenEmpty, c)
       case g: GetMapValue =>
-        new GetMapValueTransformer(
-          substraitExprName.get,
-          replaceWithExpressionTransformer(g.child, attributeSeq),
-          replaceWithExpressionTransformer(g.key, attributeSeq),
-          g.failOnError,
-          g)
+        if (BackendsApiManager.isVeloxBackend) {
+          new BinaryArgumentsCollectionOperationTransformer(
+            ExpressionMappings.expressionsMap.get(classOf[ElementAt]).get,
+            replaceWithExpressionTransformer(g.child, attributeSeq),
+            replaceWithExpressionTransformer(g.key, attributeSeq),
+            g)
+        } else {
+          new GetMapValueTransformer(
+            substraitExprName.get,
+            replaceWithExpressionTransformer(g.child, attributeSeq),
+            replaceWithExpressionTransformer(g.key, attributeSeq),
+            g.failOnError,
+            g)
+        }
       case e: Explode =>
         new ExplodeTransformer(
           substraitExprName.get,
