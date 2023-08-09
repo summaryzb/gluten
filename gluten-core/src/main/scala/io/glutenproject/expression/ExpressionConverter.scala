@@ -372,7 +372,8 @@ object ExpressionConverter extends SQLConfHelper with Logging {
             ExpressionMappings.expressionsMap.get(classOf[ElementAt]).get,
             replaceWithExpressionTransformer(g.child, attributeSeq),
             replaceWithExpressionTransformer(g.key, attributeSeq),
-            g)
+            g
+          )
         } else {
           new GetMapValueTransformer(
             substraitExprName.get,
