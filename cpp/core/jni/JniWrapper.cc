@@ -856,6 +856,23 @@ JNIEXPORT jlong JNICALL Java_io_glutenproject_vectorized_ShuffleWriterJniWrapper
     std::shared_ptr<CelebornClient> celebornClient =
         std::make_shared<CelebornClient>(vm, partitionPusher, celebornPushPartitionDataMethod);
     partitionWriterCreator = std::make_shared<CelebornPartitionWriterCreator>(std::move(celebornClient));
+  } else if (partitionWriterType == "uniffle") {
+    shuffleWriterOptions.partition_writer_type = PartitionWriterType::kUniffle;
+    jclass unifflePartitionPusherClass =
+            createGlobalClassReferenceOrError(env, "Lorg/apache/spark/shuffle/writer/PartitionPusher;");
+        jmethodID unifflePushPartitionDataMethod =
+            getMethodIdOrError(env, unifflePartitionPusherClass, "pushPartitionData", "(I[B)I");
+        if (pushBufferMaxSize > 0) {
+          shuffleWriterOptions.push_buffer_max_size = pushBufferMaxSize;
+        }
+        JavaVM* vm;
+        if (env->GetJavaVM(&vm) != JNI_OK) {
+          gluten::jniThrow("Unable to get JavaVM instance");
+        }
+        // rename CelebornClient RssClient
+        std::shared_ptr<CelebornClient> celebornClient =
+            std::make_shared<CelebornClient>(vm, partitionPusher, unifflePushPartitionDataMethod);
+        partitionWriterCreator = std::make_shared<CelebornPartitionWriterCreator>(std::move(celebornClient));
   } else {
     throw gluten::GlutenException("Unrecognizable partition writer type: " + partitionWriterType);
   }

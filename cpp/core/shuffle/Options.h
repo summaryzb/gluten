@@ -31,7 +31,7 @@ static constexpr double kDefaultBufferReallocThreshold = 0.25;
 static constexpr bool kEnableBufferedWrite = true;
 static constexpr bool kWriteEos = true;
 
-enum PartitionWriterType { kLocal, kCeleborn };
+enum PartitionWriterType { kLocal, kCeleborn, kUniffle };
 
 struct ShuffleReaderOptions {
   arrow::ipc::IpcReadOptions ipc_read_options = arrow::ipc::IpcReadOptions::Defaults();
