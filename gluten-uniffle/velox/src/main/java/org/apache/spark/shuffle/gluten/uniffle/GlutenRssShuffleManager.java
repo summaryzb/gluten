@@ -16,8 +16,6 @@
  */
 package org.apache.spark.shuffle.gluten.uniffle;
 
-import java.lang.reflect.Constructor;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.spark.ShuffleDependency;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkEnv;
@@ -26,17 +24,17 @@ import org.apache.spark.executor.ShuffleWriteMetrics;
 import org.apache.spark.shuffle.ColumnarShuffleDependency;
 import org.apache.spark.shuffle.RssShuffleHandle;
 import org.apache.spark.shuffle.RssShuffleManager;
+import org.apache.spark.shuffle.RssSparkConfig;
 import org.apache.spark.shuffle.ShuffleHandle;
-import org.apache.spark.shuffle.ShuffleReadMetricsReporter;
-import org.apache.spark.shuffle.ShuffleReader;
 import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.ShuffleWriter;
 import org.apache.spark.shuffle.sort.ColumnarShuffleManager;
-import org.apache.spark.shuffle.writer.RssShuffleWriter;
 import org.apache.spark.shuffle.writer.VeloxUniffleColumnarShuffleWriter;
 import org.apache.uniffle.common.exception.RssException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Constructor;
 
 public class GlutenRssShuffleManager extends RssShuffleManager {
   private static final Logger LOG = LoggerFactory.getLogger(GlutenRssShuffleManager.class);
@@ -53,8 +51,7 @@ public class GlutenRssShuffleManager extends RssShuffleManager {
       synchronized (this) {
         if (_columnarShuffleManager == null) {
           _columnarShuffleManager =
-              initShuffleManager(
-                  GLUTEN_SHUFFLE_MANAGER_NAME, sparkConf, isDriver());
+              initShuffleManager(GLUTEN_SHUFFLE_MANAGER_NAME, sparkConf, isDriver());
         }
       }
     }
@@ -65,8 +62,7 @@ public class GlutenRssShuffleManager extends RssShuffleManager {
     if (_vanillaUniffleShuffleManager == null) {
       synchronized (this) {
         if (_vanillaUniffleShuffleManager == null) {
-          initShuffleManager(
-              VANILLA_UNIFFLE_SHUFFLE_MANAGER_NAME, sparkConf, isDriver());
+          initShuffleManager(VANILLA_UNIFFLE_SHUFFLE_MANAGER_NAME, sparkConf, isDriver());
         }
       }
     }
@@ -77,18 +73,17 @@ public class GlutenRssShuffleManager extends RssShuffleManager {
     return "driver".equals(SparkEnv.get().executorId());
   }
 
-  private ColumnarShuffleManager initShuffleManager(
-      String name, SparkConf conf, boolean isDriver) {
+  private ColumnarShuffleManager initShuffleManager(String name, SparkConf conf, boolean isDriver) {
     Constructor constructor;
     ColumnarShuffleManager instance;
     try {
       Class klass = Class.forName(name);
       try {
         constructor = klass.getConstructor(conf.getClass(), Boolean.TYPE);
-        instance = (ColumnarShuffleManager)constructor.newInstance(conf, isDriver);
+        instance = (ColumnarShuffleManager) constructor.newInstance(conf, isDriver);
       } catch (NoSuchMethodException var7) {
         constructor = klass.getConstructor(conf.getClass());
-        instance = (ColumnarShuffleManager)constructor.newInstance(conf);
+        instance = (ColumnarShuffleManager) constructor.newInstance(conf);
       }
     } catch (Exception e) {
       throw new RuntimeException("initColumnManager fail");
@@ -100,13 +95,12 @@ public class GlutenRssShuffleManager extends RssShuffleManager {
     super(conf, isDriver);
     // TODO conf set some config
   }
+
   @Override
   public <K, V, C> ShuffleHandle registerShuffle(
       int shuffleId, ShuffleDependency<K, V, C> dependency) {
     return super.registerShuffle(shuffleId, dependency);
   }
-
-
 
   @Override
   public <K, V> ShuffleWriter<K, V> getWriter(
@@ -114,6 +108,8 @@ public class GlutenRssShuffleManager extends RssShuffleManager {
     if (!(handle instanceof RssShuffleHandle)) {
       throw new RssException("Unexpected ShuffleHandle:" + handle.getClass().getName());
     }
+    sparkConf.setIfMissing(
+        RssSparkConfig.SPARK_RSS_CONFIG_PREFIX + RssSparkConfig.RSS_ROW_BASED, "false");
     RssShuffleHandle<K, V, V> rssHandle = (RssShuffleHandle<K, V, V>) handle;
     if (rssHandle.getDependency() instanceof ColumnarShuffleDependency) {
       setPusherAppId(rssHandle);
@@ -124,16 +120,18 @@ public class GlutenRssShuffleManager extends RssShuffleManager {
       } else {
         writeMetrics = context.taskMetrics().shuffleWriteMetrics();
       }
-    return new VeloxUniffleColumnarShuffleWriter<>(
-          rssHandle.getAppId(), rssHandle.getShuffleId(),  taskId,
-        context.taskAttemptId(),
-        writeMetrics,
-        this,
-        sparkConf,
-        shuffleWriteClient,
-        rssHandle,
-        this::markFailedTask,
-        context);
+      return new VeloxUniffleColumnarShuffleWriter<>(
+          rssHandle.getAppId(),
+          rssHandle.getShuffleId(),
+          taskId,
+          context.taskAttemptId(),
+          writeMetrics,
+          this,
+          sparkConf,
+          shuffleWriteClient,
+          rssHandle,
+          this::markFailedTask,
+          context);
     } else {
       return super.getWriter(handle, mapId, context, metrics);
     }

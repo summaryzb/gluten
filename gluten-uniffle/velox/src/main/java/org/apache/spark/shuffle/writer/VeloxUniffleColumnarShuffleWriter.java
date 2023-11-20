@@ -14,48 +14,49 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.spark.shuffle.writer;
 
 import io.glutenproject.GlutenConfig;
 import io.glutenproject.columnarbatch.ColumnarBatches;
-import io.glutenproject.memory.memtarget.Spiller;
 import io.glutenproject.memory.memtarget.MemoryTarget;
+import io.glutenproject.memory.memtarget.Spiller;
 import io.glutenproject.memory.nmm.NativeMemoryManagers;
 import io.glutenproject.vectorized.ShuffleWriterJniWrapper;
 import io.glutenproject.vectorized.SplitResult;
+
+import org.apache.spark.SparkConf;
 import org.apache.spark.TaskContext;
+import org.apache.spark.executor.ShuffleWriteMetrics;
 import org.apache.spark.memory.SparkMemoryUtil;
 import org.apache.spark.shuffle.ColumnarShuffleDependency;
 import org.apache.spark.shuffle.GlutenShuffleUtils;
+import org.apache.spark.shuffle.RssShuffleHandle;
 import org.apache.spark.shuffle.RssShuffleManager;
 import org.apache.spark.shuffle.RssSparkConfig;
 import org.apache.spark.sql.vectorized.ColumnarBatch;
-import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import org.apache.spark.SparkConf;
-import org.apache.spark.executor.ShuffleWriteMetrics;
-import org.apache.spark.shuffle.RssShuffleHandle;
 import org.apache.spark.util.SparkResourceUtil;
 import org.apache.uniffle.client.api.ShuffleWriteClient;
 import org.apache.uniffle.common.ShuffleBlockInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+
 import scala.Product2;
 import scala.collection.Iterator;
 
 public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K, V, V> {
 
-  private static final Logger LOG = LoggerFactory.getLogger(
-      VeloxUniffleColumnarShuffleWriter.class);
+  private static final Logger LOG =
+      LoggerFactory.getLogger(VeloxUniffleColumnarShuffleWriter.class);
 
   private long nativeShuffleWriter = 0L;
-  private String  compreSsionCodec;
+  private String compreSsionCodec;
   private int compressThreshold = GlutenConfig.getConf().columnarShuffleCompressionThreshold();
   private double reallocThreshold = GlutenConfig.getConf().columnarShuffleReallocThreshold();
-
 
   private ShuffleWriterJniWrapper jniWrapper = ShuffleWriterJniWrapper.create();
   private SplitResult splitResult;
@@ -67,8 +68,8 @@ public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K,
   private final SparkConf sparkConf;
 
   private long availableOffHeapPerTask() {
-    return SparkMemoryUtil.getCurrentAvailableOffHeapMemory() / SparkResourceUtil.getTaskSlots(
-        sparkConf);
+    return SparkMemoryUtil.getCurrentAvailableOffHeapMemory()
+        / SparkResourceUtil.getTaskSlots(sparkConf);
   }
 
   public VeloxUniffleColumnarShuffleWriter(
@@ -83,25 +84,27 @@ public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K,
       RssShuffleHandle<K, V, V> rssHandle,
       Function<String, Boolean> taskFailureCallback,
       TaskContext context) {
-    super(appId,
-    shuffleId,
-    taskId,
-    taskAttemptId,
-    shuffleWriteMetrics,
-    shuffleManager,
-    sparkConf,
-    shuffleWriteClient,
-    rssHandle,
-    taskFailureCallback, context);
+    super(
+        appId,
+        shuffleId,
+        taskId,
+        taskAttemptId,
+        shuffleWriteMetrics,
+        shuffleManager,
+        sparkConf,
+        shuffleWriteClient,
+        rssHandle,
+        taskFailureCallback,
+        context);
     columnarDep = (ColumnarShuffleDependency<K, V, V>) rssHandle.getDependency();
     this.sparkConf = sparkConf;
-    bufferSize = (int)sparkConf.getSizeAsBytes(
-        RssSparkConfig.RSS_WRITER_BUFFER_SIZE.key(),
-        RssSparkConfig.RSS_WRITER_BUFFER_SIZE.defaultValue().get());
+    bufferSize =
+        (int)
+            sparkConf.getSizeAsBytes(
+                RssSparkConfig.RSS_WRITER_BUFFER_SIZE.key(),
+                RssSparkConfig.RSS_WRITER_BUFFER_SIZE.defaultValue().get());
     compreSsionCodec = GlutenShuffleUtils.getCompressionCodec(sparkConf);
   }
-
-
 
   @Override
   protected void writeImpl(Iterator<Product2<K, V>> records) throws IOException {
@@ -118,45 +121,48 @@ public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K,
       } else {
         long handle = ColumnarBatches.getNativeHandle(cb);
         if (nativeShuffleWriter == 0) {
-          nativeShuffleWriter = jniWrapper.makeForRSS(
-              columnarDep.nativePartitioning(),
-              nativeBufferSize,
-              // use field do this
-              compreSsionCodec,
-              compressThreshold,
-              GlutenConfig.getConf().columnarShuffleCompressionMode(),
-              bufferSize,
-              partitionPusher,
-              NativeMemoryManagers
-                  .create(
-                      "UniffleShuffleWriter",
-                      new Spiller() {
-                        @Override
-                        public long spill(MemoryTarget self, long size) {
-                          if (nativeShuffleWriter == -1) {
-                            throw new IllegalStateException(
-                                "Fatal: spill() called before a shuffle shuffle writer " +
-                                    "evaluator is created. This behavior should be" +
-                                    "optimized by moving memory " +
-                                    "allocations from make() to split()");
-                          }
-                          LOG.info("Gluten shuffle writer: Trying to push {} bytes of data", size);
-                          long pushed = jniWrapper.nativeEvict(nativeShuffleWriter, size, false);
-                          LOG.info("Gluten shuffle writer: Pushed {} / {} bytes of data", pushed,
-                              size);
-                          return pushed;
-                        }
-                      })
-                  .getNativeInstanceHandle(),
-              handle,
-              taskAttemptId,
-              "uniffle",
-              reallocThreshold
-          );
+          nativeShuffleWriter =
+              jniWrapper.makeForRSS(
+                  columnarDep.nativePartitioning(),
+                  nativeBufferSize,
+                  // use field do this
+                  compreSsionCodec,
+                  compressThreshold,
+                  GlutenConfig.getConf().columnarShuffleCompressionMode(),
+                  bufferSize,
+                  partitionPusher,
+                  NativeMemoryManagers.create(
+                          "UniffleShuffleWriter",
+                          new Spiller() {
+                            @Override
+                            public long spill(MemoryTarget self, long size) {
+                              if (nativeShuffleWriter == -1) {
+                                throw new IllegalStateException(
+                                    "Fatal: spill() called before a shuffle shuffle writer "
+                                        + "evaluator is created. This behavior should be"
+                                        + "optimized by moving memory "
+                                        + "allocations from make() to split()");
+                              }
+                              LOG.info(
+                                  "Gluten shuffle writer: Trying to push {} bytes of data", size);
+                              long pushed =
+                                  jniWrapper.nativeEvict(nativeShuffleWriter, size, false);
+                              LOG.info(
+                                  "Gluten shuffle writer: Pushed {} / {} bytes of data",
+                                  pushed,
+                                  size);
+                              return pushed;
+                            }
+                          })
+                      .getNativeInstanceHandle(),
+                  handle,
+                  taskAttemptId,
+                  "uniffle",
+                  reallocThreshold);
         }
         long startTime = System.nanoTime();
-        long bytes = jniWrapper.split(nativeShuffleWriter, cb.numRows(), handle,
-            availableOffHeapPerTask());
+        long bytes =
+            jniWrapper.split(nativeShuffleWriter, cb.numRows(), handle, availableOffHeapPerTask());
         LOG.debug("jniWrapper.split rows {}, split bytes {}", cb.numRows(), bytes);
         columnarDep.metrics().get("dataSize").get().add(bytes);
         // this metric replace part of uniffle shuffle write time
@@ -173,11 +179,16 @@ public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K,
     }
     LOG.info("nativeShuffleWriter value {}", nativeShuffleWriter);
     splitResult = jniWrapper.stop(nativeShuffleWriter);
-    columnarDep.metrics().get("splitTime").get().add(
-        System.nanoTime() - startTime
-            - splitResult.getTotalPushTime()
-            - splitResult.getTotalWriteTime()
-            - splitResult.getTotalCompressTime());
+    columnarDep
+        .metrics()
+        .get("splitTime")
+        .get()
+        .add(
+            System.nanoTime()
+                - startTime
+                - splitResult.getTotalPushTime()
+                - splitResult.getTotalWriteTime()
+                - splitResult.getTotalCompressTime());
 
     shuffleWriteMetrics.incBytesWritten(splitResult.getTotalBytesWritten());
     shuffleWriteMetrics.incWriteTime(
@@ -192,7 +203,8 @@ public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K,
     }
     long writeDurationMs = System.nanoTime() - pushMergedDataTime;
     shuffleWriteMetrics.incWriteTime(writeDurationMs);
-    LOG.info("Finish write shuffle  with rest write {} ms",
+    LOG.info(
+        "Finish write shuffle  with rest write {} ms",
         TimeUnit.MILLISECONDS.toNanos(writeDurationMs));
   }
 
@@ -204,8 +216,8 @@ public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K,
   }
 
   public int doAddByte(int partitionId, byte[] data, int length) {
-    List<ShuffleBlockInfo> shuffleBlockInfos = super.getBufferManager()
-        .addPartitionData(partitionId, data, length);
+    List<ShuffleBlockInfo> shuffleBlockInfos =
+        super.getBufferManager().addPartitionData(partitionId, data, length);
     super.processShuffleBlockInfos(shuffleBlockInfos);
     return length;
   }
