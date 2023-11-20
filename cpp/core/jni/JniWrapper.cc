@@ -867,7 +867,7 @@ JNIEXPORT jlong JNICALL Java_io_glutenproject_vectorized_ShuffleWriterJniWrapper
     }
     JavaVM* vm;
     if (env->GetJavaVM(&vm) != JNI_OK) {
-      gluten::jniThrow("Unable to get JavaVM instance");
+      throw gluten::GlutenException("Unable to get JavaVM instance");
     }
     // rename CelebornClient RssClient
     std::shared_ptr<CelebornClient> celebornClient =
