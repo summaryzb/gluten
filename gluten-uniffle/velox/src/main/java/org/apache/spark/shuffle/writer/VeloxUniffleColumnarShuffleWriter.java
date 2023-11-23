@@ -217,7 +217,7 @@ public class VeloxUniffleColumnarShuffleWriter<K, V> extends RssShuffleWriter<K,
 
   public int doAddByte(int partitionId, byte[] data, int length) {
     List<ShuffleBlockInfo> shuffleBlockInfos =
-        super.getBufferManager().addPartitionData(partitionId, data, length);
+        super.getBufferManager().addPartitionData(partitionId, data, length, System.currentTimeMillis());
     super.processShuffleBlockInfos(shuffleBlockInfos);
     return length;
   }
